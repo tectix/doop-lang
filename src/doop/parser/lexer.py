@@ -166,6 +166,22 @@ class Lexer:
         self.column = 1
         self.current_char = self.text[0] if text else None
         self.tokens: List[Token] = []
+        # This helps correct line counting for multiline inputs
+        if text:
+            i = 0
+            while i < len(text) and text[i].isspace():
+                if text[i] == '\n':
+                    self.line += 1
+                    self.column = 1
+                else:
+                    self.column += 1
+                i += 1
+                
+            if i < len(text):
+                self.pos = i
+                self.current_char = text[i]
+            else:
+                self.current_char = None
         
     def error(self, message: str) -> None:
         """
@@ -185,20 +201,21 @@ class Lexer:
         
         Updates the current character, position, line, and column.
         """
+        # Update position 
         self.pos += 1
         
-        # Update column number
-        self.column += 1
+        # Update column
+        if self.current_char == '\n':
+            self.line += 1
+            self.column = 1  # Reset column to 1 for new line
+        else:
+            self.column += 1
         
+        # Update current character
         if self.pos >= len(self.text):
             self.current_char = None
         else:
             self.current_char = self.text[self.pos]
-            
-            # Handle newlines for line/column tracking
-            if self.current_char == '\n':
-                self.line += 1
-                self.column = 0 
     
     def peek(self, offset: int = 1) -> Optional[str]:
         """
@@ -218,6 +235,7 @@ class Lexer:
     def skip_whitespace(self) -> None:
         """Skip whitespace characters."""
         while self.current_char is not None and self.current_char.isspace():
+            # FIXED: Don't handle newlines here since advance() already does it
             self.advance()
     
     def skip_comment(self) -> None:
@@ -468,18 +486,21 @@ class Lexer:
                 self.advance()
                 return Token(TokenType.AT, '@', start_line, start_column, self.filename)
             
-            # Multi-character symbols
             if self.current_char == '-' and self.peek() == '>':
                 self.advance()  # Skip '-'
                 self.advance()  # Skip '>'
                 return Token(TokenType.ARROW, '->', start_line, start_column, self.filename)
             
-            # If we get here, we encountered an invalid character
+            if self.current_char == '-':
+                start_line = self.line
+                start_column = self.column
+                self.advance()
+                return Token(TokenType.IDENTIFIER, '-', start_line, start_column, self.filename)
+            
             self.error(f"Invalid character: '{self.current_char}'")
-        
-        # End of file
+
         return Token(TokenType.EOF, '', self.line, self.column, self.filename)
-    
+        
     def tokenize(self) -> List[Token]:
         """
         Tokenize the entire input and return all tokens.
